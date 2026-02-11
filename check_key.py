@@ -1,7 +1,9 @@
 import requests
 import time
 
-API_KEY = "0c45b132f394143a41d114722b459437"
+import os
+API_KEY = os.getenv("OPENWEATHER_API_KEY")
+
 URL = f"http://api.openweathermap.org/data/2.5/air_pollution?lat=28.61&lon=77.20&appid={API_KEY}"
 
 print("📡 Monitoring OpenWeather activation... (Ctrl+C to stop)")
