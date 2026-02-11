@@ -1,0 +1,25 @@
+name: Hourly AQI Fetch
+on:
+  schedule:
+    - cron: '0 * * * *' # Runs every hour
+  workflow_dispatch:      # Allows manual testing
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      - run: pip install requests pandas
+      - name: Fetch Data
+        run: python fetch_api.py
+        env:
+          OPENWEATHER_API_KEY: ${{ secrets.OPENWEATHER_API_KEY }} # Uses your secret key
+      - name: Save to Repo
+        run: |
+          git config --global user.name "AQI-Bot"
+          git config --global user.email "bot@github.com"
+          git add aqi_data.csv
+          git commit -m "Automated hourly update" || exit 0
+          git push
