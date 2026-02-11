@@ -1,176 +1,51 @@
-# Python
+# === DELHI AQI PREDICTOR GITIGNORE ===
+
+# Python & Environment
 __pycache__/
 *.py[cod]
 *$py.class
-*.so
+.env
 .Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-pip-wheel-metadata/
-share/python-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
-
-# Virtual Environment
 venv/
 env/
 ENV/
-env.bak/
-venv.bak/
-pythonenv*
 
-# PyCharm
+# IDEs
 .idea/
-*.iml
-out/
-.idea_modules/
-
-# VS Code
 .vscode/
-*.code-workspace
-
-# Jupyter Notebook
-.ipynb_checkpoints/
-*.ipynb
-
-# Environment Variables
-.env
-.env.local
-.env.*.local
-
-# Docker
-Dockerfile
-docker-compose*.yml
-.dockerignore
-**/.dockerfile
-
-# Docker volumes
-**/docker-data/
-**/postgres-data/
-
-# Data files (large files)
-data/*.csv
-!data/delhi_aqi.csv  # Only keep the main dataset
-data/*.pkl
-data/*.pickle
-data/*.h5
-data/*.hdf5
-
-# Model files (can be regenerated)
-models/
-!models/README.md  # Keep README if exists
-
-# Logs
-logs/
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# OS generated files
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
-
-# Testing
-.coverage
-.tox/
-.pytest_cache/
-.mypy_cache/
-.pytest_cache/
-.coverage
-htmlcov/
-*.cover
-.hypothesis/
-
-# Documentation
-docs/_build/
-
-# Sphinx
-docs/_build/
-
-# Pyre type checker
-.pyre/
-
-# macOS
-*.DS_Store
-.AppleDouble
-.LSOverride
-
-# Windows
-Thumbs.db
-ehthumbs.db
-Desktop.ini
-$RECYCLE.BIN/
-
-# Linux
-*~
-
-# Temporary files
-*.tmp
-*.temp
-*~
 *.swp
 *.swo
 
-# Project specific
-visualizations/
-results/
-monitoring/
-ssl/
+# Docker
+.dockerignore
+# NOTE: We keep Dockerfile and docker-compose.yml for deployment
+
+# --- PROJECT DATA ---
+data/*.csv
+data/*.pkl
+# UNIGNORE your main dataset so GitHub Actions/Streamlit can see it
+!data/delhi_aqi.csv
+# UNIGNORE live data collection file
+!aqi_data.csv
+
+# --- MODELS (Crucial Fix) ---
+# We ignore the folder but explicitly ALLOW the required pkl files 
+# so they appear on Streamlit Cloud
+models/*
+!models/trained_model.pkl
+!models/scaler.pkl
+!models/README.md
+
+# Logs & Temp
+logs/
+*.log
+fetcher.log
+temp/
+
+# OS Specific
+.DS_Store
+Thumbs.db
 
 # Streamlit
 .streamlit/
 streamlit.log
-
-# Notebook output
-notebooks/*.html
-notebooks/*.pdf
-
-# Large files
-*.zip
-*.tar
-*.gz
-*.7z
-
-# Secrets
-secrets/
-keys/
-*.pem
-*.key
-*.crt
-*.csr
-
-# Database
-*.db
-*.sqlite
-*.sqlite3
-
-# Backup files
-*.bak
-*.backup
-
-# IDE specific
-*.sublime-*
-*.komodoproject
-.komodotools
-*.sublime-workspace
-
-# Visual Studio Code
-.history/
