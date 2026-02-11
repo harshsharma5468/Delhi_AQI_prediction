@@ -25,7 +25,8 @@ pandas
 pickle-mixin
 pillow
 plotly
-protobuf
+streamlit==1.32.0
+protobuf==3.20.3
 pyarrow
 pydeck
 pyparsing
@@ -39,7 +40,7 @@ scipy
 seaborn
 six
 smmap
-streamlit
+
 tenacity
 threadpoolctl
 toml
