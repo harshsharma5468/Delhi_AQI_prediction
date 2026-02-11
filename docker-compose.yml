@@ -1,0 +1,34 @@
+version: '3.8'
+
+services:
+  # Service 1: The Main Dashboard
+  aqi_dashboard:
+    build: .
+    container_name: delhi_aqi_dashboard
+    ports:
+      - "8501:8501"
+    env_file:
+      - .env  # Loads your OPENWEATHER_API_KEY locally
+    volumes:
+      - .:/app  # Maps your local folder so the trained_model.pkl is saved to your PC
+    restart: always
+    # Runs training first to ensure the .pkl exists, then starts the UI
+    command: >
+      sh -c "python src/model_training.py && 
+             streamlit run app.py --server.port=8501 --server.address=0.0.0.0"
+
+  # Service 2: The Automatic Data Collector
+  aqi_worker:
+    build: .
+    container_name: delhi_aqi_fetcher
+    env_file:
+      - .env
+    volumes:
+      - .:/app
+    restart: always
+    # This service runs the fetcher loop independently
+    command: python fetch_api.py
+
+networks:
+  default:
+    name: aqi_network
