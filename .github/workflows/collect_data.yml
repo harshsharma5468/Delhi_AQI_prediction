@@ -27,7 +27,7 @@ jobs:
         env:
           OPENWEATHER_API_KEY: ${{ secrets.OPENWEATHER_API_KEY }}
         run: |
-          python fetch_data.py
+          python fetch_api.py
 
       - name: Commit and push data
         run: |
