@@ -2,7 +2,8 @@ name: Auto Retrain
 on:
   push:
     paths:
-      - 'aqi_data.csv'  # Only runs when you push new data
+      - 'aqi_data.csv' 
+  workflow_dispatch:  
 
 jobs:
   train_job:
