@@ -1,6 +1,6 @@
 import pandas as pd
 import os
-from model_training import train_model  # Imports your existing training function
+from src.model_training import train_model
 
 def check_and_train():
     DATA_PATH = "aqi_data.csv"
