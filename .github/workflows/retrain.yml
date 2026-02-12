@@ -1,0 +1,31 @@
+name: Auto Retrain
+on:
+  push:
+    paths:
+      - 'aqi_data.csv'  # Only runs when you push new data
+
+jobs:
+  train_job:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Dependencies
+        run: pip install pandas numpy scikit-learn joblib
+
+      - name: Run Train Check
+        run: python train_if_needed.py
+
+      - name: Commit & Push New Model
+        run: |
+          git config --global user.name 'GitHub Action'
+          git config --global user.email 'action@github.com'
+          git add models/trained_model.pkl .last_train_count.txt
+          # Only commit if files actually changed
+          git diff --quiet && git diff --staged --quiet || (git commit -m "🤖 Auto-retrain: New model updated [skip ci]" && git push)
