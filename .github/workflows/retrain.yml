@@ -1,13 +1,21 @@
 name: Auto Retrain
+
 on:
+  schedule:
+    # Runs at minute 5 of every hour (e.g., 1:05, 2:05, etc.)
+    - cron: '5 * * * *'
   push:
     paths:
-      - 'aqi_data.csv' 
-  workflow_dispatch:  
+      - 'aqi_data.csv'
+  workflow_dispatch: # Allows you to still run it manually from the UI
 
 jobs:
   train_job:
     runs-on: ubuntu-latest
+    # Added permissions to ensure the action can push changes back to the repo
+    permissions:
+      contents: write
+      
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v4
@@ -25,8 +33,16 @@ jobs:
 
       - name: Commit & Push New Model
         run: |
-          git config --global user.name 'GitHub Action'
-          git config --global user.email 'action@github.com'
-          git add models/trained_model.pkl .last_train_count.txt
-          # Only commit if files actually changed
-          git diff --quiet && git diff --staged --quiet || (git commit -m "🤖 Auto-retrain: New model updated [skip ci]" && git push)
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          
+          # Add the specific files you expect to change
+          git add models/trained_model.pkl .last_train_count.txt || true
+          
+          # Only commit and push if there are actual changes detected
+          if [ -n "$(git status --portion)" ]; then
+            git commit -m "🤖 Auto-retrain: New model updated [skip ci]"
+            git push
+          else
+            echo "No changes to commit"
+          fi
