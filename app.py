@@ -115,7 +115,9 @@ class DelhiAQIPredictor:
     
     def predict_aqi(self, input_features):
         if self.model is None or self.scaler is None: return None
-        scaled = self.scaler.transform([input_features])
+        FEATURES = ['co', 'no', 'no2', 'o3', 'so2', 'pm10', 'nh3', 'hour', 'day', 'month']
+        df = pd.DataFrame([input_features], columns=FEATURES)
+        scaled = self.scaler.transform(df)
         return self.model.predict(scaled)[0]
     
     def get_aqi_info(self, pm25):
@@ -179,9 +181,14 @@ def show_prediction(predictor):
     with c1:
         with st.container(border=True):
             co = st.slider("CO (μg/m³)", 0.0, 10000.0, 2500.0)
+            no = st.slider("NO (μg/m³)", 0.0, 200.0, 2.0)
             no2 = st.slider("NO₂ (μg/m³)", 0.0, 500.0, 60.0)
+            o3 = st.slider("O₃ (μg/m³)", 0.0, 300.0, 15.0)
+            so2 = st.slider("SO₂ (μg/m³)", 0.0, 200.0, 10.0)
             pm10 = st.slider("PM10 (μg/m³)", 0.0, 1000.0, 350.0)
+            nh3 = st.slider("NH₃ (μg/m³)", 0.0, 200.0, 20.0)
             hour = st.slider("Hour of Day", 0, 23, 12)
+            day = st.slider("Day of Month", 1, 31, 15)
             month = st.selectbox("Select Month", range(1, 13), index=1)
         
         btn = st.button("🚀 Predict AQI", type="primary", use_container_width=True)
@@ -189,7 +196,7 @@ def show_prediction(predictor):
     with c2:
         if btn:
             # Feature order: [co, no, no2, o3, so2, pm10, nh3, hour, day, month]
-            features = [co, 2.0, no2, 15.0, 10.0, pm10, 20.0, hour, 15, month]
+            features = [co, no, no2, o3, so2, pm10, nh3, hour, day, month]
             pred = predictor.predict_aqi(features)
             if pred:
                 cat, color, emoji = predictor.get_aqi_info(pred)
