@@ -1,80 +1,44 @@
-import os
 from pathlib import Path
-from datetime import datetime, timezone
-import joblib
-import pandas as pd
-import streamlit as st
-from aqi_calculator import calculate_aqi
-
-st.set_page_config(page_title="Delhi AQI", page_icon="🌫️", layout="wide")
-st.title("🌫️ Delhi AQI — CPCB-style estimate")
-st.caption("Current AQI is calculated from pollutant readings using Indian CPCB breakpoints. It is not the OpenWeather 1–5 AQI scale. Official CPCB AQI uses station-specific averaging windows.")
-
+import joblib, numpy as np, pandas as pd, plotly.express as px, streamlit as st
+from aqi_calculator import calculate_aqi, category_for_aqi
+from data_quality import quality_report
+st.set_page_config(page_title="Delhi AQI Intelligence",page_icon="🌫️",layout="wide")
+st.title("🌫️ Delhi AQI Intelligence")
+st.caption("CPCB-style AQI estimate • multi-point OpenWeather proxy • uncertainty-aware one-hour forecast")
 @st.cache_data(ttl=300)
 def load_data():
-    df = pd.read_csv("aqi_data.csv")
-    df["datetime_utc"] = pd.to_datetime(df["datetime_utc"], utc=True)
-    return df.sort_values("datetime_utc").drop_duplicates("datetime_utc")
-
-def render_result(reading, title):
-    result = calculate_aqi(reading)
-    st.subheader(title)
-    a, b, c, d = st.columns(4)
-    a.metric("AQI", result["aqi"])
-    b.metric("Category", result["category"])
-    c.metric("Dominant pollutant", result["dominant_pollutant"])
-    d.metric("PM2.5", f'{float(reading.get("pm25", 0)):.1f} µg/m³')
-    st.progress(result["aqi"] / 500)
-    st.caption("Sub-indices: " + " · ".join(f"{p.upper()}: {v}" for p, v in result["sub_indices"].items()))
-    return result
-
-try:
-    df = load_data()
-except FileNotFoundError:
-    st.error("aqi_data.csv is missing. Run fetch_api.py first.")
-    st.stop()
-
-latest = df.iloc[-1]
-st.caption(f"Latest stored observation: {latest.datetime_utc.strftime('%d %b %Y %H:%M UTC')} · Source point: {latest.get('location_name', 'Delhi')}. This is not a full-city station average.")
-render_result(latest, "Current AQI estimate from latest reading")
-
-st.divider()
-st.subheader("Manual AQI calculation")
-st.caption("Enter a current reading to calculate AQI. CO input is in µg/m³, matching OpenWeather data.")
-defaults = {key: float(latest.get(key, 0)) for key in ["pm25","pm10","no2","so2","o3","co","nh3"]}
-cols = st.columns(4)
-manual = {}
-for i, (key, value) in enumerate(defaults.items()):
-    with cols[i % 4]:
-        manual[key] = st.number_input(key.upper().replace("PM25", "PM2.5"), min_value=0.0, value=value, step=1.0)
-if st.button("Calculate AQI", type="primary"):
-    render_result(manual, "AQI for entered reading")
-
-st.divider()
-st.subheader("One-hour AQI forecast")
-model_path = Path("models/aqi_forecaster.pkl")
-if not model_path.exists():
-    st.info("Forecast model has not been trained yet. After collecting sufficient consecutive data, run: python train_forecaster.py")
-else:
-    try:
-        artifact = joblib.load(model_path)
-    except Exception:
-        st.warning("The saved forecast model is incompatible with this runtime. A retraining run has been triggered; refresh after it completes.")
-        st.stop()
-    history = df.copy()
-    history["aqi"] = history.apply(lambda row: calculate_aqi(row)["aqi"], axis=1)
-    if len(history) < 4:
-        st.warning("Need at least four readings for lag features.")
+    d=pd.read_csv("aqi_data.csv"); d["datetime_utc"]=pd.to_datetime(d["datetime_utc"],utc=True,errors="coerce")
+    return d.dropna(subset=["datetime_utc"]).sort_values("datetime_utc").drop_duplicates("datetime_utc")
+def feature_row(d):
+    q=d.copy(); q["aqi"]=q.apply(lambda r:calculate_aqi(r)["aqi"],axis=1); row=d.iloc[-1].copy(); h=row.datetime_utc.hour; w=row.datetime_utc.dayofweek
+    row["hour_sin"]=np.sin(2*np.pi*h/24); row["hour_cos"]=np.cos(2*np.pi*h/24); row["dow_sin"]=np.sin(2*np.pi*w/7); row["dow_cos"]=np.cos(2*np.pi*w/7)
+    row["aqi_lag_1"]=q.iloc[-2].aqi; row["aqi_lag_3"]=q.iloc[-4].aqi; row["aqi_rolling_3"]=q.iloc[-4:-1].aqi.mean()
+    return pd.DataFrame([row])
+def show_aqi(result,pm25):
+    a,b,c,d=st.columns(4); a.metric("CPCB-style AQI",result["aqi"]); b.metric("Health category",result["category"]); c.metric("Dominant pollutant",result["dominant_pollutant"]); d.metric("PM2.5",f"{pm25:.1f} µg/m³"); st.progress(result["aqi"]/500)
+try: df=load_data()
+except FileNotFoundError: st.error("Live dataset missing."); st.stop()
+latest=df.iloc[-1]; current=calculate_aqi(latest); report=quality_report(df)
+st.caption("Latest: %s UTC • %s • Data quality: %s (%s/100)" % (latest.datetime_utc.strftime("%d %b %Y %H:%M"),latest.get("location_name","Delhi"),report["status"].title(),report["score"]))
+overview,forecast,quality,manual=st.tabs(["Overview","Forecast","Data quality","AQI calculator"])
+with overview:
+    show_aqi(current,float(latest.pm25)); h=df.tail(240).copy(); h["AQI"]=h.apply(lambda r:calculate_aqi(r)["aqi"],axis=1)
+    fig=px.line(h,x="datetime_utc",y="AQI",markers=True,title="Recent CPCB-style AQI estimate"); fig.update_yaxes(range=[0,500]); st.plotly_chart(fig,use_container_width=True)
+    st.dataframe(pd.DataFrame({"Pollutant":list(current["sub_indices"]),"Sub-index":list(current["sub_indices"].values())}).sort_values("Sub-index",ascending=False),hide_index=True,use_container_width=True)
+with forecast:
+    st.subheader("One-hour AQI forecast"); path=Path("models/aqi_forecaster.pkl")
+    if not path.exists() or len(df)<4: st.info("Forecast model is being prepared by the scheduled pipeline.")
     else:
-        row = latest.copy()
-        row["hour"] = latest.datetime_utc.hour
-        row["dayofweek"] = latest.datetime_utc.dayofweek
-        row["month"] = latest.datetime_utc.month
-        row["aqi_lag_1"] = history.iloc[-2].aqi
-        row["aqi_lag_3"] = history.iloc[-4].aqi
-        pred = max(0, min(500, round(float(artifact["model"].predict(pd.DataFrame([row])[artifact["features"]])[0]))))
-        forecast = calculate_aqi({"pm25": 0})
-        category = next((label for upper, label, _ in [(50,"Good","#16a34a"),(100,"Satisfactory","#ca8a04"),(200,"Moderate","#ea580c"),(300,"Poor","#dc2626"),(400,"Very Poor","#7e22ce"),(500,"Severe","#7f1d1d")] if pred <= upper), "Severe")
-        st.metric("Forecast AQI (next valid hourly observation)", pred, help=f"Temporal test MAE: {artifact['metrics']['mae']}; RMSE: {artifact['metrics']['rmse']}")
-        st.write(f"Forecast category: **{category}**")
-        st.caption("A forecast is not shown as official AQI. Its performance must be judged on future, time-ordered data.")
+        try:
+            art=joblib.load(path); x=feature_row(df)[art["features"]]; point=int(np.clip(round(art["point_model"].predict(x)[0]),0,500)); low=int(np.clip(round(art["lower_model"].predict(x)[0]),0,500)); high=int(np.clip(round(art["upper_model"].predict(x)[0]),0,500)); cat,_=category_for_aqi(point)
+            a,b,c,d=st.columns(4); a.metric("Forecast AQI",point); b.metric("80% interval","%d–%d"%(min(low,high),max(low,high))); c.metric("Forecast category",cat); d.metric("Temporal MAE",art["metadata"]["metrics"]["mae"]); st.caption("Time-ordered validation only. This is an estimate, not official CPCB AQI.")
+        except Exception: st.warning("Forecast model is refreshing for the deployed runtime. Refresh after the workflow completes.")
+with quality:
+    st.json(report)
+    if "stations_used" in latest: st.metric("Aggregation coverage","%s/%s points"%(int(latest.stations_used),int(latest.stations_requested)))
+    st.dataframe(df.tail(100).sort_values("datetime_utc",ascending=False),hide_index=True,use_container_width=True)
+with manual:
+    st.caption("All inputs are µg/m³, including CO, matching OpenWeather API response."); vals={}; fields=["pm25","pm10","no2","so2","o3","co","nh3"]; cols=st.columns(4)
+    for i,f in enumerate(fields):
+        with cols[i%4]: vals[f]=st.number_input(f.upper().replace("PM25","PM2.5"),min_value=0.0,value=float(latest.get(f,0)),step=1.0)
+    if st.button("Calculate AQI",type="primary"): show_aqi(calculate_aqi(vals),vals["pm25"])
