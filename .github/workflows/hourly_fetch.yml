@@ -1,6 +1,13 @@
 name: Hourly AQI Fetch and Forecast Training
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'app.py'
+      - 'aqi_calculator.py'
+      - 'train_forecaster.py'
+      - '.github/workflows/hourly_fetch.yml'
   schedule:
     - cron: '0 * * * *'
   workflow_dispatch:
