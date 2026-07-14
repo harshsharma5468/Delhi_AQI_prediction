@@ -1,235 +1,76 @@
-import warnings
-warnings.filterwarnings('ignore')
-
-import streamlit as st
-import pandas as pd
-import numpy as np
-import plotly.express as px
-import plotly.graph_objects as go
-import plotly.io as pio
-from datetime import datetime
-import joblib
+import os
 from pathlib import Path
+from datetime import datetime, timezone
+import joblib
+import pandas as pd
+import streamlit as st
+from aqi_calculator import calculate_aqi
 
-# ─── THEME CONFIGURATION ──────────────────────────────────────────────────
-# Force Plotly to use dark mode internal logic
-pio.templates.default = "plotly_dark"
+st.set_page_config(page_title="Delhi AQI", page_icon="🌫️", layout="wide")
+st.title("🌫️ Delhi AQI — CPCB-style estimate")
+st.caption("Current AQI is calculated from pollutant readings using Indian CPCB breakpoints. It is not the OpenWeather 1–5 AQI scale. Official CPCB AQI uses station-specific averaging windows.")
 
-st.set_page_config(
-    page_title="Delhi AQI Predictor",
-    page_icon="🌫️",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+@st.cache_data(ttl=300)
+def load_data():
+    df = pd.read_csv("aqi_data.csv")
+    df["datetime_utc"] = pd.to_datetime(df["datetime_utc"], utc=True)
+    return df.sort_values("datetime_utc").drop_duplicates("datetime_utc")
 
-# ─── PREMIUM DARK CSS ─────────────────────────────────────────────────────
-st.markdown("""
-<style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
+def render_result(reading, title):
+    result = calculate_aqi(reading)
+    st.subheader(title)
+    a, b, c, d = st.columns(4)
+    a.metric("AQI", result["aqi"])
+    b.metric("Category", result["category"])
+    c.metric("Dominant pollutant", result["dominant_pollutant"])
+    d.metric("PM2.5", f'{float(reading.get("pm25", 0)):.1f} µg/m³')
+    st.progress(result["aqi"] / 500)
+    st.caption("Sub-indices: " + " · ".join(f"{p.upper()}: {v}" for p, v in result["sub_indices"].items()))
+    return result
 
-    /* Global Overrides */
-    .stApp {
-        background-color: #0F172A;
-    }
-    
-    h1, h2, h3, h4, p, span {
-        color: #F8FAFC !important;
-        font-family: 'Inter', sans-serif;
-    }
+try:
+    df = load_data()
+except FileNotFoundError:
+    st.error("aqi_data.csv is missing. Run fetch_api.py first.")
+    st.stop()
 
-    /* Custom Masthead */
-    .masthead {
-        background: linear-gradient(90deg, #1E3A8A, #3B82F6);
-        padding: 1.5rem;
-        border-radius: 15px;
-        margin-bottom: 2rem;
-        text-align: center;
-        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
-    }
+latest = df.iloc[-1]
+st.caption(f"Latest stored observation: {latest.datetime_utc.strftime('%d %b %Y %H:%M UTC')} · Source point: {latest.get('location_name', 'Delhi')}. This is not a full-city station average.")
+render_result(latest, "Current AQI estimate from latest reading")
 
-    /* Glassmorphism Metric Cards */
-    .metric-card {
-        background: rgba(30, 41, 59, 0.7);
-        padding: 1.5rem;
-        border-radius: 16px;
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        text-align: center;
-        transition: 0.3s;
-    }
-    .metric-label {
-        color: #94A3B8;
-        font-size: 0.8rem;
-        text-transform: uppercase;
-        letter-spacing: 0.1em;
-        margin-bottom: 0.5rem;
-    }
-    .metric-value {
-        font-size: 2.2rem;
-        font-weight: 800;
-        color: #FFFFFF;
-    }
+st.divider()
+st.subheader("Manual AQI calculation")
+st.caption("Enter a current reading to calculate AQI. CO input is in µg/m³, matching OpenWeather data.")
+defaults = {key: float(latest.get(key, 0)) for key in ["pm25","pm10","no2","so2","o3","co","nh3"]}
+cols = st.columns(4)
+manual = {}
+for i, (key, value) in enumerate(defaults.items()):
+    with cols[i % 4]:
+        manual[key] = st.number_input(key.upper().replace("PM25", "PM2.5"), min_value=0.0, value=value, step=1.0)
+if st.button("Calculate AQI", type="primary"):
+    render_result(manual, "AQI for entered reading")
 
-    /* Prediction Result Box */
-    .prediction-box {
-        background: #1E293B;
-        padding: 2.5rem;
-        border-radius: 20px;
-        border: 2px solid #3B82F6;
-        text-align: center;
-        margin-top: 1rem;
-    }
-
-    /* Sidebar Overrides */
-    [data-testid="stSidebar"] {
-        background-color: #111827 !important;
-    }
-</style>
-""", unsafe_allow_html=True)
-
-# ─── DATA & MODEL ENGINE ─────────────────────────────────────────────────
-class DelhiAQIPredictor:
-    def __init__(self):
-        self.load_data()
-        self.load_models()
-        
-    def load_data(self):
-        try:
-            self.df = pd.read_csv('aqi_data.csv')
-            self.df['datetime_utc'] = pd.to_datetime(self.df['datetime_utc'], utc=True)
-            # Add time features for model
-            self.df['hour'] = self.df['datetime_utc'].dt.hour
-            self.df['day'] = self.df['datetime_utc'].dt.day
-            self.df['month'] = self.df['datetime_utc'].dt.month
-            st.session_state.df = self.df
-        except:
-            st.error("Missing aqi_data.csv. Please run 'fetch_api.py' first.")
-            st.stop()
-    
-    def load_models(self):
-        try:
-            self.model = joblib.load('models/trained_model.pkl')
-            self.scaler = joblib.load('models/scaler.pkl')
-        except:
-            self.model = None
-            self.scaler = None
-    
-    def predict_aqi(self, input_features):
-        if self.model is None or self.scaler is None: return None
-        FEATURES = ['co', 'no', 'no2', 'o3', 'so2', 'pm10', 'nh3', 'hour', 'day', 'month']
-        df = pd.DataFrame([input_features], columns=FEATURES)
-        scaled = self.scaler.transform(df)
-        return self.model.predict(scaled)[0]
-    
-    def get_aqi_info(self, pm25):
-        if pm25 <= 30: return "Good", "#10B981", "😊"
-        elif pm25 <= 60: return "Satisfactory", "#FBBF24", "🙂"
-        elif pm25 <= 90: return "Moderate", "#F59E0B", "😐"
-        elif pm25 <= 120: return "Poor", "#EF4444", "😷"
-        elif pm25 <= 250: return "Very Poor", "#8B5CF6", "🤢"
-        else: return "Severe", "#DC2626", "🚨"
-
-# ─── PLOTLY THEME HELPER ──────────────────────────────────────────────────
-def apply_custom_chart_theme(fig):
-    """Ensures visibility on dark background"""
-    fig.update_layout(
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
-        font=dict(color="#F8FAFC"),
-        xaxis=dict(gridcolor="#1E293B", linecolor="#334155"),
-        yaxis=dict(gridcolor="#1E293B", linecolor="#334155"),
-        margin=dict(l=10, r=10, t=50, b=10)
-    )
-    return fig
-
-# ─── PAGE RENDERERS ───────────────────────────────────────────────────────
-def show_dashboard(predictor):
-    latest = predictor.df.iloc[-1]
-    pm25_val = latest.get('pm25', 0)
-    cat, color, emoji = predictor.get_aqi_info(pm25_val)
-    
-    # KPI Rows
-    k1, k2, k3, k4 = st.columns(4)
-    with k1:
-        st.markdown(f'<div class="metric-card"><div class="metric-label">AVG PM2.5</div><div class="metric-value">{predictor.df["pm25"].mean():.1f}</div></div>', unsafe_allow_html=True)
-    with k2:
-        st.markdown(f'<div class="metric-card"><div class="metric-label">CURRENT PM2.5</div><div class="metric-value" style="color:{color}">{pm25_val:.1f}</div></div>', unsafe_allow_html=True)
-    with k3:
-        st.markdown(f'<div class="metric-card"><div class="metric-label">HEALTH STATUS</div><div class="metric-value" style="color:{color}">{cat} {emoji}</div></div>', unsafe_allow_html=True)
-    with k4:
-        st.markdown(f'<div class="metric-card"><div class="metric-label">DATA POINTS</div><div class="metric-value">{len(predictor.df)}</div></div>', unsafe_allow_html=True)
-
-    st.markdown("<br>", unsafe_allow_html=True)
-    
-    col1, col2 = st.columns([2, 1])
-    with col1:
-        st.markdown("### 📈 Recent PM2.5 History")
-        fig = px.area(predictor.df.tail(100), x='datetime_utc', y='pm25', markers=True)
-        fig.update_traces(line_color='#3B82F6', fillcolor='rgba(59, 130, 246, 0.2)')
-        # IMPORTANT: theme=None prevents Streamlit from breaking the chart visibility
-        st.plotly_chart(apply_custom_chart_theme(fig), use_container_width=True, theme=None)
-    
-    with col2:
-        st.markdown("### 📊 Pollutant Split")
-        pollutants = ['pm25', 'pm10', 'no2', 'o3', 'co']
-        avg_vals = [predictor.df[p].mean() for p in pollutants if p in predictor.df.columns]
-        fig_pie = px.pie(values=avg_vals, names=pollutants, hole=0.4, color_discrete_sequence=px.colors.sequential.Blues_r)
-        st.plotly_chart(apply_custom_chart_theme(fig_pie), use_container_width=True, theme=None)
-
-def show_prediction(predictor):
-    st.markdown("## 🤖 AI Prediction Engine")
-    c1, c2 = st.columns([2, 1])
-    with c1:
-        with st.container(border=True):
-            co = st.slider("CO (μg/m³)", 0.0, 10000.0, 2500.0)
-            no = st.slider("NO (μg/m³)", 0.0, 200.0, 2.0)
-            no2 = st.slider("NO₂ (μg/m³)", 0.0, 500.0, 60.0)
-            o3 = st.slider("O₃ (μg/m³)", 0.0, 300.0, 15.0)
-            so2 = st.slider("SO₂ (μg/m³)", 0.0, 200.0, 10.0)
-            pm10 = st.slider("PM10 (μg/m³)", 0.0, 1000.0, 350.0)
-            nh3 = st.slider("NH₃ (μg/m³)", 0.0, 200.0, 20.0)
-            hour = st.slider("Hour of Day", 0, 23, 12)
-            day = st.slider("Day of Month", 1, 31, 15)
-            month = st.selectbox("Select Month", range(1, 13), index=1)
-        
-        btn = st.button("🚀 Predict AQI", type="primary", use_container_width=True)
-
-    with c2:
-        if btn:
-            # Feature order: [co, no, no2, o3, so2, pm10, nh3, hour, day, month]
-            features = [co, no, no2, o3, so2, pm10, nh3, hour, day, month]
-            pred = predictor.predict_aqi(features)
-            if pred:
-                cat, color, emoji = predictor.get_aqi_info(pred)
-                st.markdown(f"""
-                <div class="prediction-box">
-                    <h4 style="color:#94A3B8; margin-bottom:0.5rem">PREDICTED PM2.5</h4>
-                    <h1 style="font-size:4.5rem; color:{color}; margin:0">{pred:.1f}</h1>
-                    <h2 style="color:{color}">{cat} {emoji}</h2>
-                </div>
-                """, unsafe_allow_html=True)
-            else:
-                st.error("Model files missing in /models folder.")
-
-# ─── MAIN APP ROUTER ─────────────────────────────────────────────────────
-def main():
-    predictor = DelhiAQIPredictor()
-    
-    st.markdown('<div class="masthead"><h1>🌫️ Delhi AQI Intelligence</h1><p>Full City Average • Real-time Insights</p></div>', unsafe_allow_html=True)
-    
-    with st.sidebar:
-        st.markdown("### 🛠️ NAVIGATION")
-        page = st.radio("", ["🏠 Dashboard", "🤖 Predict AQI", "📊 Raw Data Analysis"], label_visibility="collapsed")
-        
-        st.markdown("---")
-        st.markdown("### 📡 SYSTEM STATUS")
-        st.success("● API: OpenWeather Active")
-        if st.button("⟳ Refresh Data"):
-            st.cache_data.clear()
-            st.rerun()
-
-    if page == "🏠 Dashboard": show_dashboard(predictor)
-    elif page == "🤖 Predict AQI": show_prediction(predictor)
-    elif page == "📊 Raw Data Analysis": st.dataframe(predictor.df, use_container_width=True)
-
-if __name__ == "__main__":
-    main()
+st.divider()
+st.subheader("One-hour AQI forecast")
+model_path = Path("models/aqi_forecaster.pkl")
+if not model_path.exists():
+    st.info("Forecast model has not been trained yet. After collecting sufficient consecutive data, run: python train_forecaster.py")
+else:
+    artifact = joblib.load(model_path)
+    history = df.copy()
+    history["aqi"] = history.apply(lambda row: calculate_aqi(row)["aqi"], axis=1)
+    if len(history) < 4:
+        st.warning("Need at least four readings for lag features.")
+    else:
+        row = latest.copy()
+        row["hour"] = latest.datetime_utc.hour
+        row["dayofweek"] = latest.datetime_utc.dayofweek
+        row["month"] = latest.datetime_utc.month
+        row["aqi_lag_1"] = history.iloc[-2].aqi
+        row["aqi_lag_3"] = history.iloc[-4].aqi
+        pred = max(0, min(500, round(float(artifact["model"].predict(pd.DataFrame([row])[artifact["features"]])[0]))))
+        forecast = calculate_aqi({"pm25": 0})
+        category = next((label for upper, label, _ in [(50,"Good","#16a34a"),(100,"Satisfactory","#ca8a04"),(200,"Moderate","#ea580c"),(300,"Poor","#dc2626"),(400,"Very Poor","#7e22ce"),(500,"Severe","#7f1d1d")] if pred <= upper), "Severe")
+        st.metric("Forecast AQI (next valid hourly observation)", pred, help=f"Temporal test MAE: {artifact['metrics']['mae']}; RMSE: {artifact['metrics']['rmse']}")
+        st.write(f"Forecast category: **{category}**")
+        st.caption("A forecast is not shown as official AQI. Its performance must be judged on future, time-ordered data.")
