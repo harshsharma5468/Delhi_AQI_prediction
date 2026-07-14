@@ -56,7 +56,11 @@ model_path = Path("models/aqi_forecaster.pkl")
 if not model_path.exists():
     st.info("Forecast model has not been trained yet. After collecting sufficient consecutive data, run: python train_forecaster.py")
 else:
-    artifact = joblib.load(model_path)
+    try:
+        artifact = joblib.load(model_path)
+    except Exception:
+        st.warning("The saved forecast model is incompatible with this runtime. A retraining run has been triggered; refresh after it completes.")
+        st.stop()
     history = df.copy()
     history["aqi"] = history.apply(lambda row: calculate_aqi(row)["aqi"], axis=1)
     if len(history) < 4:
