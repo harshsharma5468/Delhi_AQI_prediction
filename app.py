@@ -1,6 +1,9 @@
 from pathlib import Path
 import joblib, numpy as np, pandas as pd, plotly.express as px, streamlit as st
-from aqi_calculator import calculate_aqi, category_for_aqi
+from aqi_calculator import calculate_aqi
+
+def forecast_category(aqi):
+    return next(label for upper, label in [(50, "Good"), (100, "Satisfactory"), (200, "Moderate"), (300, "Poor"), (400, "Very Poor"), (500, "Severe")] if aqi <= upper)
 from data_quality import quality_report
 st.set_page_config(page_title="Delhi AQI Intelligence",page_icon="🌫️",layout="wide")
 st.title("🌫️ Delhi AQI Intelligence")
@@ -30,7 +33,7 @@ with forecast:
     if not path.exists() or len(df)<4: st.info("Forecast model is being prepared by the scheduled pipeline.")
     else:
         try:
-            art=joblib.load(path); x=feature_row(df)[art["features"]]; point=int(np.clip(round(art["point_model"].predict(x)[0]),0,500)); low=int(np.clip(round(art["lower_model"].predict(x)[0]),0,500)); high=int(np.clip(round(art["upper_model"].predict(x)[0]),0,500)); cat,_=category_for_aqi(point)
+            art=joblib.load(path); x=feature_row(df)[art["features"]]; point=int(np.clip(round(art["point_model"].predict(x)[0]),0,500)); low=int(np.clip(round(art["lower_model"].predict(x)[0]),0,500)); high=int(np.clip(round(art["upper_model"].predict(x)[0]),0,500)); cat=forecast_category(point)
             a,b,c,d=st.columns(4); a.metric("Forecast AQI",point); b.metric("80% interval","%d–%d"%(min(low,high),max(low,high))); c.metric("Forecast category",cat); d.metric("Temporal MAE",art["metadata"]["metrics"]["mae"]); st.caption("Time-ordered validation only. This is an estimate, not official CPCB AQI.")
         except Exception: st.warning("Forecast model is refreshing for the deployed runtime. Refresh after the workflow completes.")
 with quality:
