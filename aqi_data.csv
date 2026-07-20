@@ -2304,3 +2304,4 @@ datetime_utc,location_name,aqi_owm,co,no,no2,o3,so2,pm25,pm10,nh3,source,aggrega
 2026-07-19 23:00:00+00:00,Delhi multi-point median,1.0,178.82,0.0,8.06,32.47,2.1,7.43,17.35,11.565,OpenWeather,median,6.0,6.0,100.0
 2026-07-20 02:00:00+00:00,Delhi multi-point median,1.0,170.475,0.3249999999999999,7.535,35.730000000000004,1.835,6.64,15.66,7.905,OpenWeather,median,6.0,6.0,100.0
 2026-07-20 05:00:00+00:00,Delhi multi-point median,1.0,121.89,0.2,3.27,52.91,0.82,3.69,10.52,4.86,OpenWeather,median,6.0,6.0,100.0
+2026-07-20 06:00:00+00:00,Delhi multi-point median,1.0,121.89,0.2,3.27,52.91,0.82,3.69,10.52,4.86,OpenWeather,median,6.0,6.0,100.0
