@@ -1,13 +1,57 @@
 {
-  "schema_version": "2.0",
-  "target": "AQI at next valid hourly observation",
-  "trained_at_utc": "2026-08-09T07:52:35.813654+00:00",
-  "python": "3.11.15",
+  "schema_version": "3.0",
+  "target": "AQI at the next clock hour",
+  "trained_at_utc": "2026-08-09T08:26:37.148383+00:00",
+  "python": "3.12.13",
   "sklearn": "1.5.2",
+  "training_rows": 1037,
+  "selected_params": {
+    "max_leaf_nodes": 15,
+    "min_samples_leaf": 20
+  },
+  "point_prediction": "current AQI + delta_weight * predicted one-hour change",
+  "delta_weight": 0.25,
+  "walk_forward_candidates": [
+    {
+      "params": {
+        "max_leaf_nodes": 15,
+        "min_samples_leaf": 20
+      },
+      "delta_weight": 0.25,
+      "walk_forward_mae": 7.714
+    },
+    {
+      "params": {
+        "max_leaf_nodes": 31,
+        "min_samples_leaf": 20
+      },
+      "delta_weight": 0.25,
+      "walk_forward_mae": 7.743
+    },
+    {
+      "params": {
+        "max_leaf_nodes": 31,
+        "min_samples_leaf": 40
+      },
+      "delta_weight": 0.25,
+      "walk_forward_mae": 7.796
+    },
+    {
+      "params": {
+        "max_leaf_nodes": 63,
+        "min_samples_leaf": 30
+      },
+      "delta_weight": 0.25,
+      "walk_forward_mae": 7.747
+    }
+  ],
+  "conformal_adjustment": 3.883,
   "metrics": {
-    "mae": 6.85,
-    "rmse": 9.92,
-    "coverage_80": 56.9,
-    "test_rows": 367
+    "mae": 6.6,
+    "rmse": 11.33,
+    "persistence_mae": 7.17,
+    "mae_improvement_vs_persistence_pct": 7.9,
+    "coverage_80": 84.2,
+    "test_rows": 259
   }
 }

@@ -49,3 +49,4 @@ Thumbs.db
 # Streamlit
 .streamlit/
 streamlit.log
+.venv/
