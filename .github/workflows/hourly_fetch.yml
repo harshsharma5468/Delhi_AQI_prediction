@@ -40,8 +40,6 @@ jobs:
 
       - name: Train time-based one-hour forecast
         run: python train_forecaster.py
-        # Training needs enough consecutive observations. Data collection still succeeds if it is not ready.
-        continue-on-error: true
 
       - name: Commit refreshed data and forecast model
         run: |

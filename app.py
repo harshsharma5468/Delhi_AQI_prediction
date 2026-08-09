@@ -1,6 +1,7 @@
 from pathlib import Path
 import joblib, numpy as np, pandas as pd, plotly.express as px, streamlit as st
 from aqi_calculator import calculate_aqi
+from train_forecaster import build_feature_frame
 
 def forecast_category(aqi):
     return next(label for upper, label in [(50, "Good"), (100, "Satisfactory"), (200, "Moderate"), (300, "Poor"), (400, "Very Poor"), (500, "Severe")] if aqi <= upper)
@@ -13,10 +14,9 @@ def load_data():
     d=pd.read_csv("aqi_data.csv"); d["datetime_utc"]=pd.to_datetime(d["datetime_utc"],utc=True,errors="coerce")
     return d.dropna(subset=["datetime_utc"]).sort_values("datetime_utc").drop_duplicates("datetime_utc")
 def feature_row(d):
-    q=d.copy(); q["aqi"]=q.apply(lambda r:calculate_aqi(r)["aqi"],axis=1); row=d.iloc[-1].copy(); h=row.datetime_utc.hour; w=row.datetime_utc.dayofweek
-    row["hour_sin"]=np.sin(2*np.pi*h/24); row["hour_cos"]=np.cos(2*np.pi*h/24); row["dow_sin"]=np.sin(2*np.pi*w/7); row["dow_cos"]=np.cos(2*np.pi*w/7)
-    row["aqi_lag_1"]=q.iloc[-2].aqi; row["aqi_lag_3"]=q.iloc[-4].aqi; row["aqi_rolling_3"]=q.iloc[-4:-1].aqi.mean()
-    return pd.DataFrame([row])
+    features=build_feature_frame(d,include_target=False)
+    if features.empty: raise ValueError("At least 25 consecutive hourly observations are required")
+    return features.tail(1)
 def show_aqi(result,pm25):
     a,b,c,d=st.columns(4); a.metric("CPCB-style AQI",result["aqi"]); b.metric("Health category",result["category"]); c.metric("Dominant pollutant",result["dominant_pollutant"]); d.metric("PM2.5",f"{pm25:.1f} µg/m³"); st.progress(result["aqi"]/500)
 try: df=load_data()
@@ -33,8 +33,15 @@ with forecast:
     if not path.exists() or len(df)<4: st.info("Forecast model is being prepared by the scheduled pipeline.")
     else:
         try:
-            art=joblib.load(path); x=feature_row(df)[art["features"]]; point=int(np.clip(round(art["point_model"].predict(x)[0]),0,500)); low=int(np.clip(round(art["lower_model"].predict(x)[0]),0,500)); high=int(np.clip(round(art["upper_model"].predict(x)[0]),0,500)); cat=forecast_category(point)
-            a,b,c,d=st.columns(4); a.metric("Forecast AQI",point); b.metric("80% interval","%d–%d"%(min(low,high),max(low,high))); c.metric("Forecast category",cat); d.metric("Temporal MAE",art["metadata"]["metrics"]["mae"]); st.caption("Time-ordered validation only. This is an estimate, not official CPCB AQI.")
+            art=joblib.load(path); row=feature_row(df); x=row[art["features"]]; raw_change=art["point_model"].predict(x)[0]; point=int(np.clip(round(row.iloc[0].aqi_current+float(art.get("delta_weight",1))*raw_change),0,500)); adjustment=float(art.get("conformal_adjustment",0)); low=int(np.clip(round(art["lower_model"].predict(x)[0]-adjustment),0,500)); high=int(np.clip(round(art["upper_model"].predict(x)[0]+adjustment),0,500)); cat=forecast_category(point); metrics=art["metadata"]["metrics"]
+            a,b,c,d=st.columns(4); a.metric("Forecast AQI",point); b.metric("Conformal 80% interval","%d–%d"%(min(low,high),max(low,high))); c.metric("Forecast category",cat); d.metric("Held-out MAE",metrics["mae"],delta=f'{metrics["mae_improvement_vs_persistence_pct"]}% vs persistence')
+            st.caption("Walk-forward model selection and held-out temporal validation. This is an estimate, not official CPCB AQI.")
+            validation=pd.DataFrame(art.get("validation",[]))
+            if not validation.empty:
+                validation["datetime_utc"]=pd.to_datetime(validation["datetime_utc"],utc=True); recent=validation.tail(72); r1,r2,r3=st.columns(3)
+                r1.metric("Recent 72h MAE",f'{recent.absolute_error.mean():.1f}'); r2.metric("Held-out RMSE",metrics["rmse"]); r3.metric("Interval coverage",f'{metrics["coverage_80"]}%')
+                chart=recent.melt(id_vars="datetime_utc",value_vars=["actual","predicted"],var_name="Series",value_name="AQI")
+                st.plotly_chart(px.line(chart,x="datetime_utc",y="AQI",color="Series",title="Recent held-out forecasts vs actual AQI"),use_container_width=True)
         except Exception: st.warning("Forecast model is refreshing for the deployed runtime. Refresh after the workflow completes.")
 with quality:
     st.json(report)

@@ -11,8 +11,9 @@ Live app: https://delhiaqiprediction-oqtovurfmqkjew82fym3nk.streamlit.app/
 | Multi-point data | Six Delhi geographic points are fetched concurrently and aggregated using a robust median. |
 | AQI methodology | Pollutant sub-indices and dominant pollutant follow CPCB breakpoints. CO is converted from OpenWeather µg/m³ to mg/m³. |
 | Data quality | Freshness, missing-pollutant checks, dataset size and an explainable quality score are shown in the dashboard. |
-| Temporal ML | The target is AQI at the next valid hourly observation; validation uses chronological splits only. |
-| Uncertainty | Quantile gradient-boosting models provide an 80% forecast interval. |
+| Temporal ML | Hourly-normalized inputs use 1/2/3/6/12/24-hour lags, rolling levels, pollutant trends and cyclical time features. Hyperparameters are selected with walk-forward validation. |
+| Uncertainty | Quantile gradient-boosting models plus split-conformal calibration provide a data-driven 80% forecast interval. |
+| Honest baseline | The point model forecasts the one-hour AQI change and walk-forward validation tunes how much of that change to trust. Held-out MAE is compared with persistence, and the dashboard plots the latest 72 out-of-sample errors. |
 | Reproducibility | Python and core ML dependencies are pinned; model metadata includes versions and temporal metrics. |
 | MLOps | GitHub Actions collects data, retrains the model and commits the resulting artifact. |
 
@@ -22,7 +23,7 @@ Six Delhi grid points → median aggregation → versioned hourly dataset → CP
 
 ## Forecast design
 
-Inputs include current pollutant readings, cyclic hour/day-of-week variables, AQI lags and rolling AQI. The system reports MAE, RMSE and empirical 80% interval coverage on a held-out future time period.
+Inputs include current pollutant readings, cyclic hour/day-of-week variables, AQI lags through 24 hours, rolling AQI levels and short-term pollutant trends. Raw observations are normalized to robust hourly medians without filling missing hours. The newest 20% of history remains untouched for final evaluation; the system reports MAE, RMSE, persistence-baseline improvement and empirical interval coverage.
 
 ## Run locally
 
