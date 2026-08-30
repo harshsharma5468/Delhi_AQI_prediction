@@ -1,7 +1,7 @@
 {
   "schema_version": "2.0",
   "target": "AQI at next valid hourly observation",
-  "trained_at_utc": "2026-08-30T17:54:47.283747+00:00",
+  "trained_at_utc": "2026-08-30T20:34:54.806014+00:00",
   "python": "3.11.16",
   "sklearn": "1.5.2",
   "metrics": {
