@@ -1,13 +1,13 @@
 {
   "schema_version": "2.0",
   "target": "AQI at next valid hourly observation",
-  "trained_at_utc": "2026-10-29T02:05:17.405976+00:00",
+  "trained_at_utc": "2026-10-29T09:20:40.061288+00:00",
   "python": "3.11.17",
   "sklearn": "1.5.2",
   "metrics": {
-    "mae": 6.34,
-    "rmse": 9.92,
-    "coverage_80": 77.6,
+    "mae": 6.39,
+    "rmse": 10.19,
+    "coverage_80": 77.1,
     "test_rows": 455
   }
 }
